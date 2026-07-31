@@ -75,5 +75,43 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_residents_archive ON residents(archive);
   `);
 
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS repartition_configs (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL,
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW()
+  );
+
+  CREATE TABLE IF NOT EXISTS repartition_soignants (
+    id TEXT PRIMARY KEY,
+    config_id TEXT REFERENCES repartition_configs(id) ON DELETE CASCADE,
+    numero INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    etage TEXT,
+    ordre INTEGER DEFAULT 0,
+    UNIQUE(config_id, numero)
+  );
+
+  CREATE TABLE IF NOT EXISTS repartition_defaults (
+    id TEXT PRIMARY KEY,
+    config_id TEXT REFERENCES repartition_configs(id) ON DELETE CASCADE,
+    soignant_id TEXT REFERENCES repartition_soignants(id) ON DELETE CASCADE,
+    chambre INTEGER NOT NULL,
+    UNIQUE(config_id, chambre)
+  );
+
+  CREATE TABLE IF NOT EXISTS repartition_affectations (
+    id TEXT PRIMARY KEY,
+    config_id TEXT REFERENCES repartition_configs(id),
+    soignant_id TEXT REFERENCES repartition_soignants(id),
+    resident_id TEXT REFERENCES residents(id),
+    date_affectation DATE NOT NULL,
+    binome_soignant_id TEXT REFERENCES repartition_soignants(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(resident_id, date_affectation)
+  );
+`);
+
   console.log('Residents — Base de donnees initialisee');
 }
