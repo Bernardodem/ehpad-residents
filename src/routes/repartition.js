@@ -134,7 +134,12 @@ router.patch('/affectations/:residentId', requireManager, async (req, res) => {
   const { config_id, date, soignant_id, binome_soignant_id } = req.body;
   try {
     const existing = await pool.query('SELECT id FROM repartition_affectations WHERE resident_id = $1 AND date_affectation = $2', [req.params.residentId, date]);
-    if (existing.rows.length > 0) {
+    if (!soignant_id) {
+      // Desaffecter : supprimer la ligne
+      if (existing.rows.length > 0) {
+        await pool.query('DELETE FROM repartition_affectations WHERE id = $1', [existing.rows[0].id]);
+      }
+    } else if (existing.rows.length > 0) {
       await pool.query('UPDATE repartition_affectations SET soignant_id = $1, binome_soignant_id = $2 WHERE id = $3',
         [soignant_id, binome_soignant_id || null, existing.rows[0].id]);
     } else {
