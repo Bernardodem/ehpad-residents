@@ -167,4 +167,71 @@ router.get('/non-affectes', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Affectations stables (defaults)
+router.get('/configs/:id/affectations', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT rd.id, rd.chambre, rd.soignant_id, s.label as soignant_label, s.numero as soignant_numero, s.etage,
+             r.nom, r.prenom, r.toilette, r.transfert, r.id as resident_id
+      FROM repartition_defaults rd
+      JOIN repartition_soignants s ON rd.soignant_id = s.id
+      LEFT JOIN residents r ON r.chambre = rd.chambre AND r.archive = false
+      WHERE rd.config_id = $1
+      ORDER BY s.ordre, rd.chambre
+    `, [req.params.id]);
+
+    const nonAffectes = await pool.query(`
+      SELECT r.id, r.nom, r.prenom, r.chambre, r.toilette
+      FROM residents r
+      WHERE r.archive = false
+        AND r.chambre NOT IN (
+          SELECT chambre FROM repartition_defaults WHERE config_id = $1
+        )
+      ORDER BY r.chambre
+    `, [req.params.id]);
+
+    res.json({ affectations: result.rows, non_affectes: nonAffectes.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.patch('/configs/:id/affectations/:chambre', requireManager, async (req, res) => {
+  const { soignant_id } = req.body;
+  const { id: config_id, chambre } = req.params;
+  try {
+    if (!soignant_id) {
+      await pool.query('DELETE FROM repartition_defaults WHERE config_id = $1 AND chambre = $2', [config_id, parseInt(chambre)]);
+    } else {
+      const existing = await pool.query('SELECT id FROM repartition_defaults WHERE config_id = $1 AND chambre = $2', [config_id, parseInt(chambre)]);
+      if (existing.rows.length > 0) {
+        await pool.query('UPDATE repartition_defaults SET soignant_id = $1 WHERE id = $2', [soignant_id, existing.rows[0].id]);
+      } else {
+        await pool.query('INSERT INTO repartition_defaults (id, config_id, soignant_id, chambre) VALUES ($1,$2,$3,$4)',
+          [randomUUID(), config_id, soignant_id, parseInt(chambre)]);
+      }
+    }
+
+    // Historique : garder max 10 entrees
+    await pool.query(`
+      INSERT INTO repartition_historique (id, config_id, chambre, soignant_id, modifie_at)
+      VALUES ($1,$2,$3,$4,NOW())
+    `, [randomUUID(), config_id, parseInt(chambre), soignant_id || null]).catch(() => {});
+
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/configs/:id/historique', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT h.*, s.label as soignant_label
+      FROM repartition_historique h
+      LEFT JOIN repartition_soignants s ON h.soignant_id = s.id
+      WHERE h.config_id = $1
+      ORDER BY h.modifie_at DESC
+      LIMIT 10
+    `, [req.params.id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 export default router;
