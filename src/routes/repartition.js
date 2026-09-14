@@ -239,3 +239,44 @@ router.get('/configs/:id/historique', async (req, res) => {
 });
 
 export default router;
+
+// Archives
+router.get('/archives', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT ra.*, rc.nom as config_nom
+      FROM repartition_archives ra
+      LEFT JOIN repartition_configs rc ON ra.config_id = rc.id
+      ORDER BY ra.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/archives/:id', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM repartition_archives WHERE id = $1`, [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Archive introuvable' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/archives', requireManager, async (req, res) => {
+  const { config_id, nom, affectations } = req.body;
+  if (!config_id || !affectations) return res.status(400).json({ error: 'Champs requis manquants' });
+  try {
+    const result = await pool.query(`
+      INSERT INTO repartition_archives (id, config_id, nom, affectations, created_by)
+      VALUES (gen_random_uuid()::text, $1, $2, $3, $4)
+      RETURNING *
+    `, [config_id, nom || `Répartition du ${new Date().toLocaleDateString('fr-FR')}`, JSON.stringify(affectations), req.user.id]);
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/archives/:id', requireManager, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM repartition_archives WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
