@@ -171,10 +171,13 @@ router.get('/non-affectes', async (req, res) => {
 router.get('/configs/:id/affectations', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT rd.id, rd.chambre, rd.soignant_id, s.label as soignant_label, s.numero as soignant_numero, s.etage,
+      SELECT rd.id, rd.chambre, rd.soignant_id, rd.binome_soignant_id,
+             s.label as soignant_label, s.numero as soignant_numero, s.etage,
+             b.label as binome_label,
              r.nom, r.prenom, r.toilette, r.transfert, r.id as resident_id
       FROM repartition_defaults rd
       JOIN repartition_soignants s ON rd.soignant_id = s.id
+      LEFT JOIN repartition_soignants b ON rd.binome_soignant_id = b.id
       LEFT JOIN residents r ON r.chambre = rd.chambre AND r.archive = false
       WHERE rd.config_id = $1
       ORDER BY s.ordre, rd.chambre
@@ -195,18 +198,19 @@ router.get('/configs/:id/affectations', async (req, res) => {
 });
 
 router.patch('/configs/:id/affectations/:chambre', requireManager, async (req, res) => {
-  const { soignant_id } = req.body;
+  const { soignant_id, binome_soignant_id } = req.body;
   const { id: config_id, chambre } = req.params;
+  console.log('PATCH affectations', chambre, 'soignant_id:', soignant_id, 'binome_soignant_id:', binome_soignant_id);
   try {
     if (!soignant_id) {
       await pool.query('DELETE FROM repartition_defaults WHERE config_id = $1 AND chambre = $2', [config_id, parseInt(chambre)]);
     } else {
       const existing = await pool.query('SELECT id FROM repartition_defaults WHERE config_id = $1 AND chambre = $2', [config_id, parseInt(chambre)]);
       if (existing.rows.length > 0) {
-        await pool.query('UPDATE repartition_defaults SET soignant_id = $1 WHERE id = $2', [soignant_id, existing.rows[0].id]);
+        await pool.query('UPDATE repartition_defaults SET soignant_id = $1, binome_soignant_id = $2 WHERE id = $3', [soignant_id, binome_soignant_id || null, existing.rows[0].id]);
       } else {
-        await pool.query('INSERT INTO repartition_defaults (id, config_id, soignant_id, chambre) VALUES ($1,$2,$3,$4)',
-          [randomUUID(), config_id, soignant_id, parseInt(chambre)]);
+        await pool.query('INSERT INTO repartition_defaults (id, config_id, soignant_id, binome_soignant_id, chambre) VALUES ($1,$2,$3,$4,$5)',
+          [randomUUID(), config_id, soignant_id, binome_soignant_id || null, parseInt(chambre)]);
       }
     }
 
