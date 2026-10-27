@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 
-const SSO_SECRET = process.env.SSO_JWT_SECRET || 'SsoSecretMonArcEnCiel2024';
+const SSO_SECRET = process.env.SSO_JWT_SECRET;
+if (!SSO_SECRET) throw new Error('SSO_JWT_SECRET manquant dans le .env');
 const RESIDENTS_APP_ID = process.env.RESIDENTS_APP_ID;
 
 export function authMiddleware(req, res, next) {
